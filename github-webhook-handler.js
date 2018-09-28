@@ -1,108 +1,96 @@
-const EventEmitter = require('events').EventEmitter
-    , inherits     = require('util').inherits
-    , crypto       = require('crypto')
-    , bl           = require('bl')
-    , bufferEq     = require('buffer-equal-constant-time')
+const EventEmitter = require('events');
+const crypto = require('crypto');
+const bl = require('bl');
 
-function create (options) {
-  if (typeof options != 'object')
-    throw new TypeError('must provide an options object')
+function create(options) {
+  if (typeof options !== 'object')
+    throw new TypeError('must provide an options object');
 
-  if (typeof options.path != 'string')
-    throw new TypeError('must provide a \'path\' option')
+  if (typeof options.secret !== 'string')
+    throw new TypeError(`'secret' is not provided.`);
 
-  if (typeof options.secret != 'string')
-    throw new TypeError('must provide a \'secret\' option')
+  const {fallthrough} = options;
 
-  var events
+  const sign = data =>
+      `sha1=${crypto.createHmac('sha1', options.secret).
+          update(data).
+          digest('hex')}`;
 
-  if (typeof options.events == 'string' && options.events != '*')
-    events = [ options.events ]
+  const verify = (signature, data) =>
+      crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(sign(data)));
 
-  else if (Array.isArray(options.events) && options.events.indexOf('*') == -1)
-    events = options.events
+  let events = options.events || '*';
+
+  if (typeof events === 'string')
+    events = [options.events];
+
+  else if (events.indexOf('*') !== -1)
+    events = undefined;
 
   // make it an EventEmitter, sort of
-  handler.__proto__ = EventEmitter.prototype
-  EventEmitter.call(handler)
+  Reflect.setPrototypeOf(handler, EventEmitter.prototype);
+  EventEmitter.call(handler);
 
-  handler.sign = sign
-  handler.verify = verify
+  handler.sign = sign;
+  handler.verify = verify;
 
-  return handler
+  return handler;
 
-
-  function sign (data) {
-    return 'sha1=' + crypto.createHmac('sha1', options.secret).update(data).digest('hex')
-  }
-
-  function verify (signature, data) {
-    return bufferEq(Buffer.from(signature), Buffer.from(sign(data)))
-  }
-
-  function handler (req, res, callback) {
-    if (req.url.split('?').shift() !== options.path || req.method !== 'POST')
-      return callback()
-
-    function hasError (msg) {
-      res.writeHead(400, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ error: msg }))
-
-      var err = new Error(msg)
-
-      handler.emit('error', err, req)
-      callback(err)
+  function handler(req, res, next) {
+    function generateError (code, error) {
+      handler.emit('error', {code, error, req, res});
+      if(fallthrough) return next();
     }
 
-    var sig   = req.headers['x-hub-signature']
-      , event = req.headers['x-github-event']
-      , id    = req.headers['x-github-delivery']
+    if (req.method !== 'POST')
+      return generateError(405, 'method not allowed');
+
+    const sig = req.headers['x-hub-signature']
+        , event = req.headers['x-github-event']
+        , id = req.headers['x-github-delivery'];
 
     if (!sig)
-      return hasError('No X-Hub-Signature found on request')
+      return generateError(401, 'X-Hub-Signature is not present');
 
     if (!event)
-      return hasError('No X-Github-Event found on request')
+      return generateError(400, 'X-Github-Event is not present');
 
     if (!id)
-      return hasError('No X-Github-Delivery found on request')
+      return generateError(400, 'X-Github-Delivery is not present');
 
-    if (events && events.indexOf(event) == -1)
-      return hasError('X-Github-Event is not acceptable')
+    if (events && events.indexOf(event) === -1)
+      return next();
 
-    req.pipe(bl(function (err, data) {
-      if (err) {
-        return hasError(err.message)
-      }
-
-      var obj
+    req.pipe(bl(function(err, data) {
+      if (err)
+        return generateError(500, err.message);
 
       if (!verify(sig, data))
-        return hasError('X-Hub-Signature does not match blob signature')
+        return generateError(403, 'X-Hub-Signature not match');
 
+      let obj;
       try {
-        obj = JSON.parse(data.toString())
+        obj = JSON.parse(data.toString());
       } catch (e) {
-        return hasError(e)
+        return generateError(400, 'request body pause failed');
       }
 
-      res.writeHead(200, { 'content-type': 'application/json' })
-      res.end('{"ok":true}')
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end('{"code":0, "message":"ok"}');
 
       var emitData = {
-          event   : event
-        , id      : id
-        , payload : obj
+        event
+        , id
+        , payload: obj
         , protocol: req.protocol
-        , host    : req.headers['host']
-        , url     : req.url
-      }
+        , host: req.headers['host']
+        , url: req.url,
+      };
 
-      handler.emit(event, emitData)
-      handler.emit('*', emitData)
-    }))
+      handler.emit(event, emitData);
+      handler.emit('*', emitData);
+    }));
   }
 }
 
-
-module.exports = create
+module.exports = create;
