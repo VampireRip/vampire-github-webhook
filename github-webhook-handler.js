@@ -22,9 +22,9 @@ function create(options) {
   let events = options.events || '*';
 
   if (typeof events === 'string')
-    events = [options.events];
+    events = [events, 'ping'];
 
-  else if (events.indexOf('*') !== -1)
+  if (events.indexOf('*') !== -1)
     events = undefined;
 
   // make it an EventEmitter, sort of
@@ -61,7 +61,7 @@ function create(options) {
     if (events && events.indexOf(event) === -1)
       return next();
 
-    req.pipe(bl(function(err, data) {
+    const callback = function(err, data) {
       if (err)
         return generateError(500, err.message);
 
@@ -89,7 +89,11 @@ function create(options) {
 
       handler.emit(event, emitData);
       handler.emit('*', emitData);
-    }));
+    };
+
+    if(req.body) callback(null, JSON.stringify(req.body));
+    else
+      req.pipe(bl(callback));
   }
 }
 
