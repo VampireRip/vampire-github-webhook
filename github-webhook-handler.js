@@ -72,7 +72,7 @@ function create(options) {
       try {
         obj = JSON.parse(data.toString());
       } catch (e) {
-        return generateError(400, 'request body pause failed');
+        return generateError(400, 'request body parse failed');
       }
 
       res.writeHead(200, {'Content-Type': 'application/json'});
