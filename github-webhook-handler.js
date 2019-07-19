@@ -12,9 +12,7 @@ function create(options) {
   const {fallthrough} = options;
 
   const sign = data =>
-      `sha1=${crypto.createHmac('sha1', options.secret).
-          update(data).
-          digest('hex')}`;
+      `sha1=${crypto.createHmac('sha1', options.secret).update(data).digest('hex')}`;
 
   const verify = (signature, data) =>
       crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(sign(data)));
@@ -86,12 +84,12 @@ function create(options) {
         , host: req.headers['host']
         , url: req.url,
       };
-
       handler.emit(event, emitData);
       handler.emit('*', emitData);
     };
 
-    if(req.body) callback(null, JSON.stringify(req.body));
+    if(req.body) 
+      callback(null, JSON.stringify(req.body));
     else
       req.pipe(bl(callback));
   }

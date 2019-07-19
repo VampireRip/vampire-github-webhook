@@ -18,12 +18,9 @@
   },
   "license": "MIT",
   "dependencies": {
-    "bl": "~1.1.2"
+    "bl": "~3.0.0"
   },
   "devDependencies": {
-    "@types/node": "*",
-    "run-series": "~1.1.4",
-    "tape": "~4.6.0",
-    "through2": "~2.0.1"
+    "@types/node": "*"
   }
 }
